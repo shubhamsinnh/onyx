@@ -2,9 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { Modal } from "@opal/components";
-import { Button, Text } from "@opal/components";
+import { Button, PasswordInputTypeIn, Text } from "@opal/components";
 import { InputTypeIn } from "@opal/components";
-import PasswordInputTypeIn from "@/refresh-components/inputs/PasswordInputTypeIn";
 import InputSelect from "@/refresh-components/inputs/InputSelect";
 import SimpleCollapsible from "@/refresh-components/SimpleCollapsible";
 import {

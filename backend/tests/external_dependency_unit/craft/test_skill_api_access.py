@@ -11,23 +11,25 @@ import pytest
 from fastapi import UploadFile
 from sqlalchemy.orm import Session
 
-from onyx.db.enums import SkillAccessLevel
-from onyx.db.enums import SkillSharePermission
-from onyx.db.models import User
-from onyx.db.models import UserRole
+from onyx.db.enums import SkillAccessLevel, SkillSharePermission
+from onyx.db.models import User, UserRole
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
-from onyx.server.features.skill.api import create_custom_skill
-from onyx.server.features.skill.api import fetch_skill_for_current_user
-from onyx.server.features.skill.api import patch_current_user_skill
-from onyx.server.features.skill.api import replace_current_user_skill_bundle
+from onyx.server.features.skill.api import (
+    create_custom_skill,
+    fetch_skill_for_current_user,
+    patch_current_user_skill,
+    replace_current_user_skill_bundle,
+)
 from onyx.server.features.skill.models import SkillPatchRequest
-from tests.external_dependency_unit.craft.db_helpers import add_user_to_group
-from tests.external_dependency_unit.craft.db_helpers import make_group
-from tests.external_dependency_unit.craft.db_helpers import make_skill
-from tests.external_dependency_unit.craft.db_helpers import make_user
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_group
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_user
+from tests.external_dependency_unit.craft.db_helpers import (
+    add_user_to_group,
+    make_group,
+    make_skill,
+    make_user,
+    share_skill_with_group,
+    share_skill_with_user,
+)
 
 
 def _upload(filename: str) -> UploadFile:

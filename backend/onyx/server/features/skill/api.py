@@ -1,57 +1,61 @@
 from uuid import UUID
 
-from fastapi import APIRouter
-from fastapi import Depends
-from fastapi import File
-from fastapi import UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 from sqlalchemy.orm import Session
 
 from onyx.auth.permissions import require_permission
 from onyx.auth.schemas import UserRole
 from onyx.db.engine.sql_engine import get_session
-from onyx.db.enums import AccountType
-from onyx.db.enums import Permission
-from onyx.db.enums import SkillSharePermission
-from onyx.db.models import Skill
-from onyx.db.models import User
-from onyx.db.skill import affected_user_ids_for_skill
-from onyx.db.skill import create_skill__no_commit
-from onyx.db.skill import delete_skill
-from onyx.db.skill import fetch_skill
-from onyx.db.skill import list_skills
-from onyx.db.skill import replace_skill_bundle
-from onyx.db.skill import replace_skill_shares
-from onyx.db.skill import SkillAccessPolicy
-from onyx.db.skill import transfer_skill_ownership
-from onyx.db.skill import update_skill_fields
+from onyx.db.enums import AccountType, Permission, SkillSharePermission
+from onyx.db.models import Skill, User
+from onyx.db.skill import (
+    affected_user_ids_for_skill,
+    create_skill__no_commit,
+    delete_skill,
+    fetch_skill,
+    list_skills,
+    replace_skill_bundle,
+    replace_skill_shares,
+    SkillAccessPolicy,
+    transfer_skill_ownership,
+    update_skill_fields,
+)
 from onyx.db.users import fetch_user_by_id
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
 from onyx.file_store.file_store import get_default_file_store
-from onyx.server.features.skill.models import SkillEditableDetailResponse
-from onyx.server.features.skill.models import SkillPatchRequest
-from onyx.server.features.skill.models import SkillPreviewResponse
-from onyx.server.features.skill.models import SkillResponse
-from onyx.server.features.skill.models import SkillShareRequest
-from onyx.server.features.skill.models import SkillsList
-from onyx.server.features.skill.models import TransferSkillOwnershipRequest
-from onyx.server.features.skill.response_helpers import skill_preview_response
-from onyx.server.features.skill.response_helpers import skill_response_for_user
-from onyx.server.features.skill.response_helpers import skills_list_response_for_user
-from onyx.skills.built_in import BUILT_IN_SKILLS
-from onyx.skills.built_in import EXTERNAL_APP_BUILT_IN_SKILL_IDS
-from onyx.skills.bundle import compute_bundle_sha256
-from onyx.skills.bundle import read_bundle_file
-from onyx.skills.bundle import read_custom_bundle_instructions
-from onyx.skills.bundle import rewrite_custom_bundle_skill_md
-from onyx.skills.bundle import slug_from_filename
-from onyx.skills.content import read_custom_skill_bundle_bytes
-from onyx.skills.content import read_custom_skill_bundle_instructions
-from onyx.skills.ingest import delete_bundle_blob
-from onyx.skills.ingest import ingested_skill_bundle
-from onyx.skills.ingest import save_skill_bundle_bytes
-from onyx.skills.push import push_skill_to_affected_sandboxes
-from onyx.skills.push import push_skills_for_users
+from onyx.server.features.skill.models import (
+    SkillEditableDetailResponse,
+    SkillPatchRequest,
+    SkillPreviewResponse,
+    SkillResponse,
+    SkillShareRequest,
+    SkillsList,
+    TransferSkillOwnershipRequest,
+)
+from onyx.server.features.skill.response_helpers import (
+    skill_preview_response,
+    skill_response_for_user,
+    skills_list_response_for_user,
+)
+from onyx.skills.built_in import BUILT_IN_SKILLS, EXTERNAL_APP_BUILT_IN_SKILL_IDS
+from onyx.skills.bundle import (
+    compute_bundle_sha256,
+    read_bundle_file,
+    read_custom_bundle_instructions,
+    rewrite_custom_bundle_skill_md,
+    slug_from_filename,
+)
+from onyx.skills.content import (
+    read_custom_skill_bundle_bytes,
+    read_custom_skill_bundle_instructions,
+)
+from onyx.skills.ingest import (
+    delete_bundle_blob,
+    ingested_skill_bundle,
+    save_skill_bundle_bytes,
+)
+from onyx.skills.push import push_skill_to_affected_sandboxes, push_skills_for_users
 
 user_router = APIRouter(prefix="/skills")
 

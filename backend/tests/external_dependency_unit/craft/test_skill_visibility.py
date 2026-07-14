@@ -5,18 +5,21 @@ from __future__ import annotations
 from sqlalchemy.orm import Session
 
 from onyx.db.enums import SkillSharePermission
-from onyx.db.models import User
-from onyx.db.models import UserRole
-from onyx.db.skill import fetch_skill
-from onyx.db.skill import list_skills
-from onyx.db.skill import SkillAccessPolicy
-from onyx.db.skill import update_skill_fields
-from tests.external_dependency_unit.craft.db_helpers import add_user_to_group
-from tests.external_dependency_unit.craft.db_helpers import make_group
-from tests.external_dependency_unit.craft.db_helpers import make_skill
-from tests.external_dependency_unit.craft.db_helpers import make_user
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_group
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_user
+from onyx.db.models import User, UserRole
+from onyx.db.skill import (
+    fetch_skill,
+    list_skills,
+    SkillAccessPolicy,
+    update_skill_fields,
+)
+from tests.external_dependency_unit.craft.db_helpers import (
+    add_user_to_group,
+    make_group,
+    make_skill,
+    make_user,
+    share_skill_with_group,
+    share_skill_with_user,
+)
 
 
 def _admin_skills(admin: User, db_session: Session):

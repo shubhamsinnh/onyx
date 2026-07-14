@@ -2,29 +2,29 @@ import concurrent.futures
 import re
 
 import requests
-from fastapi import APIRouter
-from fastapi import HTTPException
-from fastapi import Response
+from fastapi import APIRouter, HTTPException, Response
 from fastapi.concurrency import run_in_threadpool
 
 from onyx import __version__
-from onyx.auth.users import anonymous_user_enabled
-from onyx.auth.users import user_needs_to_be_verified
-from onyx.configs.app_configs import AUTH_TYPE
-from onyx.configs.app_configs import OAUTH_ENABLED
-from onyx.configs.constants import AuthType
-from onyx.configs.constants import DEV_VERSION_PATTERN
-from onyx.configs.constants import PUBLIC_API_TAGS
-from onyx.configs.constants import STABLE_VERSION_PATTERN
+from onyx.auth.users import anonymous_user_enabled, user_needs_to_be_verified
+from onyx.configs.app_configs import AUTH_TYPE, OAUTH_ENABLED
+from onyx.configs.constants import (
+    AuthType,
+    DEV_VERSION_PATTERN,
+    PUBLIC_API_TAGS,
+    STABLE_VERSION_PATTERN,
+)
 from onyx.db.auth import get_user_count
 from onyx.db.engine.sql_engine import get_session_with_shared_schema
 from onyx.db.enums import SSOProviderType
 from onyx.db.sso_provider import fetch_sso_providers
-from onyx.server.manage.models import AllVersions
-from onyx.server.manage.models import AuthTypeResponse
-from onyx.server.manage.models import ContainerVersions
-from onyx.server.manage.models import SSOProviderOption
-from onyx.server.manage.models import VersionResponse
+from onyx.server.manage.models import (
+    AllVersions,
+    AuthTypeResponse,
+    ContainerVersions,
+    SSOProviderOption,
+    VersionResponse,
+)
 from onyx.server.models import StatusResponse
 from onyx.server.security.store import get_security_settings
 from shared_configs.configs import MULTI_TENANT

@@ -40,12 +40,16 @@ sys.path.append(parent_dir)
 
 from sqlalchemy import select  # noqa: E402
 
-from onyx.db.engine.sql_engine import get_session_with_tenant  # noqa: E402
-from onyx.db.engine.sql_engine import SqlEngine  # noqa: E402
+from onyx.db.engine.sql_engine import (
+    get_session_with_tenant,  # noqa: E402
+    SqlEngine,  # noqa: E402
+)
 from onyx.db.engine.tenant_utils import get_all_tenant_ids  # noqa: E402
-from onyx.db.models import CloudEmbeddingProvider  # noqa: E402
-from onyx.db.models import LLMProvider  # noqa: E402
-from onyx.db.models import VoiceProvider  # noqa: E402
+from onyx.db.models import (
+    CloudEmbeddingProvider,  # noqa: E402
+    LLMProvider,  # noqa: E402
+    VoiceProvider,  # noqa: E402
+)
 from onyx.utils.variable_functionality import (  # noqa: E402
     set_is_ee_based_on_env_variable,
 )

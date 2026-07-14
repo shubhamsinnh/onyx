@@ -6,9 +6,7 @@ no live OpenSearch) to pin how `time_cutoff` / `time_cutoff_upper` turn into the
 Vespa coverage in `tests/unit/onyx/utils/test_vespa_query.py`.
 """
 
-from datetime import datetime
-from datetime import timedelta
-from datetime import timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from onyx.document_index.interfaces_new import TenantState

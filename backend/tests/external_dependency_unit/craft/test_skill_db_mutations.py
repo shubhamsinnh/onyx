@@ -1,26 +1,28 @@
 from __future__ import annotations
 
-from uuid import UUID
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from onyx.db.enums import SkillSharePermission
-from onyx.db.models import Skill__User
-from onyx.db.models import Skill__UserGroup
-from onyx.db.skill import replace_skill_shares
-from onyx.db.skill import transfer_skill_ownership
-from onyx.db.skill import update_skill_fields
+from onyx.db.models import Skill__User, Skill__UserGroup
+from onyx.db.skill import (
+    replace_skill_shares,
+    transfer_skill_ownership,
+    update_skill_fields,
+)
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
-from tests.external_dependency_unit.craft.db_helpers import make_built_in_skill_row
-from tests.external_dependency_unit.craft.db_helpers import make_group
-from tests.external_dependency_unit.craft.db_helpers import make_skill
-from tests.external_dependency_unit.craft.db_helpers import make_user
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_group
-from tests.external_dependency_unit.craft.db_helpers import share_skill_with_user
+from tests.external_dependency_unit.craft.db_helpers import (
+    make_built_in_skill_row,
+    make_group,
+    make_skill,
+    make_user,
+    share_skill_with_group,
+    share_skill_with_user,
+)
 
 
 def _direct_share_permissions(

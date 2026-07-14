@@ -4,8 +4,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from onyx.file_store.file_store import FileStore
-from onyx.skills.ingest import ingested_skill_bundle
-from onyx.skills.ingest import IngestedBundle
+from onyx.skills.ingest import ingested_skill_bundle, IngestedBundle
 
 
 def test_ingested_skill_bundle_deletes_new_blob_on_failure(

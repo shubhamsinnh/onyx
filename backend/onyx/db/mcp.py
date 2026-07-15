@@ -61,6 +61,17 @@ def get_mcp_servers_by_owner(owner_email: str, db_session: Session) -> list[MCPS
     )
 
 
+def get_craft_enabled_mcp_servers(db_session: Session) -> list[MCPServer]:
+    """Get all MCP servers an admin has made available to the Craft agent"""
+    return list(
+        db_session.scalars(
+            select(MCPServer)
+            .where(MCPServer.available_in_craft.is_(True))
+            .order_by(MCPServer.created_at)
+        ).all()
+    )
+
+
 def get_mcp_servers_for_persona(
     persona_id: int,
     db_session: Session,
@@ -208,6 +219,7 @@ def update_mcp_server__no_commit(
     status: MCPServerStatus | None = None,
     last_refreshed_at: datetime.datetime | None = None,
     is_public: bool | None = None,
+    available_in_craft: bool | None = None,
 ) -> MCPServer:
     """Update an existing MCP server"""
     server = get_mcp_server_by_id(server_id, db_session)
@@ -242,6 +254,8 @@ def update_mcp_server__no_commit(
         server.status = status
     if last_refreshed_at is not None:
         server.last_refreshed_at = last_refreshed_at
+    if available_in_craft is not None:
+        server.available_in_craft = available_in_craft
 
     db_session.flush()  # Don't commit yet, let caller decide when to commit
     return server

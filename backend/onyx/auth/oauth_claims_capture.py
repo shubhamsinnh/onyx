@@ -10,11 +10,12 @@ then used to (a) enrich the chat system prompt and (b) resolve
 author-controlled ``{{user.<key>}}`` placeholders in agent prompts.
 
 Profile fields are resolved through a provider-agnostic claim map: each field
-has an ordered list of claim aliases checked against three sources in
+has an ordered list of claim aliases checked against the captured sources in
 precedence order — the provider directory API (Microsoft Graph for Entra ID),
-the OIDC userinfo response, then the raw id_token claims. Okta/Keycloak/Google
-deployments therefore work out of the box for whatever claims they release,
-and the map can be extended per-deployment via ``IDP_PROFILE_CLAIM_MAP``.
+the OIDC userinfo response, the raw id_token claims, then SAML assertion
+attributes. Okta/Keycloak/Google deployments therefore work out of the box for
+whatever claims they release, and the map can be extended per-deployment via
+``IDP_PROFILE_CLAIM_MAP``.
 
 Capture is strictly best-effort: any failure is logged and swallowed so the
 login flow can never break because of it. No tokens are persisted — only
@@ -64,6 +65,15 @@ _MS_GRAPH_SELECT_FIELDS = (
 
 def _oauth_claims_key(tenant_id: str, email: str) -> str:
     return f"{_OAUTH_CLAIMS_KEY_PREFIX}:{tenant_id}:{email.lower()}"
+
+
+async def _store_claims_snapshot(email: str, snapshot: dict[str, Any]) -> None:
+    redis = await get_async_redis_connection()
+    await redis.set(
+        _oauth_claims_key(get_current_tenant_id(), email),
+        json.dumps(snapshot, default=str),
+        ex=_OAUTH_CLAIMS_TTL_SECONDS,
+    )
 
 
 def _decode_id_token_claims(raw_id_token: str) -> dict[str, Any]:
@@ -206,15 +216,67 @@ async def _capture_oauth_login_claims(
             },
         }
 
-        redis = await get_async_redis_connection()
-        await redis.set(
-            _oauth_claims_key(get_current_tenant_id(), email),
-            json.dumps(snapshot, default=str),
-            ex=_OAUTH_CLAIMS_TTL_SECONDS,
-        )
+        await _store_claims_snapshot(email, snapshot)
     except Exception:
         logger.warning(
             "OAuth claims capture failed for %s (login unaffected)",
+            email,
+            exc_info=True,
+        )
+
+
+async def capture_saml_login_claims(
+    email: str,
+    saml_attributes: dict[str, list[str]],
+    provider_name: str,
+) -> None:
+    """Snapshot the directory attributes a SAML IdP asserted at login.
+
+    SAML carries the same directory data (department, title, ...) as OIDC, just
+    as assertion attributes instead of token claims. Resolution reuses the same
+    claim map, so deployments map their attribute names via IDP_PROFILE_CLAIM_MAP.
+    No-op unless IDP_PROFILE_ENRICHMENT_ENABLED. Never raises, and never holds the
+    login open past _OAUTH_CLAIMS_CAPTURE_TIMEOUT_SECONDS.
+    """
+    if not IDP_PROFILE_ENRICHMENT_ENABLED:
+        return
+    try:
+        await asyncio.wait_for(
+            _capture_saml_login_claims(email, saml_attributes, provider_name),
+            timeout=_OAUTH_CLAIMS_CAPTURE_TIMEOUT_SECONDS,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("SAML claims capture timed out for %s (login unaffected)", email)
+
+
+async def _capture_saml_login_claims(
+    email: str,
+    saml_attributes: dict[str, list[str]],
+    provider_name: str,
+) -> None:
+    try:
+        # OneLogin returns each attribute as a list. Keep the first string value
+        # so the claim-map resolver can treat it like any other source.
+        flattened = {
+            name: values[0]
+            for name, values in saml_attributes.items()
+            if isinstance(values, list) and values and isinstance(values[0], str)
+        }
+        snapshot = {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "oauth_name": provider_name,
+            "email": email,
+            "id_token_claims": {},
+            "userinfo": {},
+            "directory_profile": None,
+            "directory_source": None,
+            "saml_attributes": flattened,
+            "token_meta": {"source": "saml"},
+        }
+        await _store_claims_snapshot(email, snapshot)
+    except Exception:
+        logger.warning(
+            "SAML claims capture failed for %s (login unaffected)",
             email,
             exc_info=True,
         )
@@ -283,6 +345,12 @@ def _load_profile_sources(email: str) -> list[dict[str, Any]]:
     id_token_claims = snapshot.get("id_token_claims")
     if isinstance(id_token_claims, dict):
         sources.append(id_token_claims)
+    # Lowest priority by convention. A snapshot is written whole per login, so
+    # today a SAML snapshot never carries the OIDC sources above and ordering
+    # only matters if a future path mixes them.
+    saml_attributes = snapshot.get("saml_attributes")
+    if isinstance(saml_attributes, dict):
+        sources.append(saml_attributes)
     return sources
 
 

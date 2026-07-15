@@ -9,6 +9,7 @@ import pytest
 
 import onyx.auth.oauth_claims_capture as claims_capture
 from onyx.auth.oauth_claims_capture import capture_oauth_login_claims
+from onyx.auth.oauth_claims_capture import capture_saml_login_claims
 from onyx.auth.oauth_claims_capture import get_captured_oauth_claims
 from onyx.auth.oauth_claims_capture import get_idp_profile_fields
 from onyx.auth.oauth_claims_capture import get_idp_profile_placeholder_values
@@ -379,3 +380,56 @@ def test_source_precedence_holds_across_aliases() -> None:
         values = get_idp_profile_placeholder_values("user@example.com")
 
     assert values["department"] == "Directory Division"
+
+
+@pytest.mark.asyncio
+async def test_capture_saml_stores_flattened_attributes() -> None:
+    """SAML attributes arrive as {name: [values]}. Capture keeps the first value
+    so the shared claim-map resolver can treat them like any other source."""
+    redis = AsyncMock()
+    with patch(
+        "onyx.auth.oauth_claims_capture.get_async_redis_connection",
+        return_value=redis,
+    ):
+        await capture_saml_login_claims(
+            "user@example.com",
+            {"department": ["Legal"], "jobTitle": ["Counsel"], "empty": []},
+            "okta-saml",
+        )
+
+    redis.set.assert_awaited_once()
+    snapshot = json.loads(redis.set.await_args.args[1])
+    assert snapshot["saml_attributes"] == {"department": "Legal", "jobTitle": "Counsel"}
+    assert snapshot["oauth_name"] == "okta-saml"
+
+
+def test_profile_resolves_from_saml_attributes() -> None:
+    snapshot = {
+        "saml_attributes": {"department": "Legal", "jobTitle": "Counsel", "ctry": "US"},
+        "directory_profile": None,
+        "userinfo": {},
+        "id_token_claims": {},
+    }
+    redis = MagicMock()
+    redis.get.return_value = json.dumps(snapshot)
+
+    with patch("onyx.redis.redis_pool.get_raw_redis_client", return_value=redis):
+        values = get_idp_profile_placeholder_values("user@example.com")
+
+    assert values == {"department": "Legal", "job_title": "Counsel", "country": "US"}
+
+
+@pytest.mark.asyncio
+async def test_capture_saml_noop_when_enrichment_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(claims_capture, "IDP_PROFILE_ENRICHMENT_ENABLED", False)
+    redis = AsyncMock()
+    with patch(
+        "onyx.auth.oauth_claims_capture.get_async_redis_connection",
+        return_value=redis,
+    ):
+        await capture_saml_login_claims(
+            "user@example.com", {"department": ["Legal"]}, "okta-saml"
+        )
+    redis.set.assert_not_awaited()

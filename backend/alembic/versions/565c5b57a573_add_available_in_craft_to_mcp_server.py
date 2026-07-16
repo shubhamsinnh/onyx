@@ -1,7 +1,7 @@
 """add available_in_craft to mcp_server
 
 Revision ID: 565c5b57a573
-Revises: bd38e2a494ff
+Revises: b1d060254b02
 Create Date: 2026-07-15 14:56:39.502921
 
 """
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "565c5b57a573"
-down_revision = "bd38e2a494ff"
+down_revision = "b1d060254b02"
 branch_labels = None
 depends_on = None
 
@@ -23,7 +23,7 @@ def upgrade() -> None:
             "available_in_craft",
             sa.Boolean(),
             nullable=False,
-            server_default=sa.text("false"),
+            server_default=sa.text("true"),
         ),
     )
 

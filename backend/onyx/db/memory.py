@@ -6,8 +6,7 @@ from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from onyx.auth.oauth_claims_capture import get_idp_profile_fields
-from onyx.auth.oauth_claims_capture import get_idp_profile_placeholder_values
+from onyx.auth.oauth_claims_capture import get_idp_profile
 from onyx.db.engine.sql_engine import get_session_with_current_tenant_if_none
 from onyx.db.models import Memory
 from onyx.db.models import User
@@ -76,7 +75,8 @@ def get_memories(user: User, db_session: Session) -> UserMemoryContext:
     # `{{user.<key>}}` placeholder values: IdP directory profile plus basic
     # identity. Identity keys use setdefault so a directory field never gets
     # clobbered (they don't overlap today, but keeps precedence explicit).
-    placeholder_values = get_idp_profile_placeholder_values(user.email)
+    profile_views = get_idp_profile(user.email)
+    placeholder_values = profile_views.placeholders
     if user.email:
         placeholder_values.setdefault("email", user.email)
     if user.personal_name:
@@ -88,7 +88,7 @@ def get_memories(user: User, db_session: Session) -> UserMemoryContext:
         name=user.personal_name,
         role=user.personal_role,
         email=user.email,
-        organization_profile=get_idp_profile_fields(user.email),
+        organization_profile=profile_views.fields,
         placeholder_values=placeholder_values,
     )
 

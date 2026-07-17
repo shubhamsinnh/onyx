@@ -27,6 +27,8 @@ import json
 from datetime import datetime
 from datetime import timezone
 from typing import Any
+from typing import Awaitable
+from typing import cast
 
 import httpx
 import jwt
@@ -42,9 +44,12 @@ from shared_configs.contextvars import get_current_tenant_id
 
 logger = setup_logger()
 
-_OAUTH_CLAIMS_KEY_PREFIX = "oauth_login_claims"
+# Redis HASH per (tenant, email): field = provider name, value = snapshot JSON.
+# Keeping one field per provider means a login through a second IdP never
+# clobbers the first provider's directory data.
+_OAUTH_CLAIMS_KEY_PREFIX = "idp_login_claims"
 # Long enough that an admin can log in and inspect at leisure; short enough
-# that stale directory data doesn't linger forever.
+# that data for users who stop logging in doesn't linger forever.
 _OAUTH_CLAIMS_TTL_SECONDS = 60 * 60 * 24 * 30
 
 # Hard ceiling on the whole best-effort capture. It runs inline in the login
@@ -102,12 +107,44 @@ async def _store_claims_snapshot(email: str, snapshot: dict[str, Any]) -> None:
             email,
         )
         return
+    provider = str(snapshot.get("oauth_name") or "unknown")
+    key = _oauth_claims_key(tenant_id, email)
     redis = await get_async_redis_connection()
-    await redis.set(
-        _oauth_claims_key(tenant_id, email),
-        json.dumps(snapshot, default=str),
-        ex=_OAUTH_CLAIMS_TTL_SECONDS,
-    )
+    # TTL is per key, so any login through any provider keeps the whole hash
+    # alive. Fields for abandoned providers persist until the hash expires.
+    pipe = redis.pipeline()
+    pipe.hset(key, provider, json.dumps(snapshot, default=str))
+    pipe.expire(key, _OAUTH_CLAIMS_TTL_SECONDS)
+    await pipe.execute()
+
+
+def _snapshot_captured_at(snapshot: dict[str, Any]) -> datetime:
+    """Parsed capture timestamp for ordering. Offset-aware parsing keeps the
+    ordering correct even if a snapshot were ever written with a non-UTC
+    offset. Unparseable or missing timestamps sort last (oldest)."""
+    try:
+        captured_at = datetime.fromisoformat(str(snapshot.get("captured_at")))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if captured_at.tzinfo is None:
+        captured_at = captured_at.replace(tzinfo=timezone.utc)
+    return captured_at
+
+
+def _sorted_snapshots(raw_values: list[Any]) -> list[dict[str, Any]]:
+    """Parse hash values into snapshots, most recent login first. Corrupt or
+    non-dict entries are dropped so one bad provider field cannot poison the
+    rest."""
+    snapshots: list[dict[str, Any]] = []
+    for raw in raw_values:
+        try:
+            parsed = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if isinstance(parsed, dict):
+            snapshots.append(parsed)
+    snapshots.sort(key=_snapshot_captured_at, reverse=True)
+    return snapshots
 
 
 def _decode_id_token_claims(raw_id_token: str) -> dict[str, Any]:
@@ -353,22 +390,9 @@ def _claim_aliases(placeholder_key: str, defaults: tuple[str, ...]) -> tuple[str
     return tuple(override) + tuple(a for a in defaults if a not in override)
 
 
-def _load_profile_sources(email: str) -> list[dict[str, Any]]:
-    """Read the captured login snapshot and return the claim sources to
-    resolve profile fields against, in precedence order.
-
-    Must use the RAW client — the capture writes via the raw async connection,
-    and the tenant-prefixing TenantRedisClient would look up a different key
-    (the tenant id is already part of ``_oauth_claims_key``). Best-effort: the
-    chat pipeline that consumes this must treat the profile as optional."""
-    from onyx.redis.redis_pool import get_raw_redis_client
-
-    redis = get_raw_redis_client()
-    raw = redis.get(_oauth_claims_key(get_current_tenant_id(), email))
-    if not isinstance(raw, (str, bytes)):
-        return []
-    snapshot = json.loads(raw)
-
+def _snapshot_sources(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
+    """Claim sources of one snapshot in precedence order (directory API,
+    userinfo, id_token, then SAML assertion attributes)."""
     sources: list[dict[str, Any]] = []
     directory_profile = snapshot.get("directory_profile")
     if isinstance(directory_profile, dict) and "error" not in directory_profile:
@@ -385,6 +409,28 @@ def _load_profile_sources(email: str) -> list[dict[str, Any]]:
     saml_attributes = snapshot.get("saml_attributes")
     if isinstance(saml_attributes, dict):
         sources.append(saml_attributes)
+    return sources
+
+
+def _load_profile_sources(email: str) -> list[dict[str, Any]]:
+    """Read all captured provider snapshots and return the claim sources to
+    resolve profile fields against, in precedence order: every source of the
+    most recent login first, then older providers' sources as gap fillers.
+
+    Must use the RAW client — the capture writes via the raw async connection,
+    and the tenant-prefixing TenantRedisClient would look up a different key
+    (the tenant id is already part of ``_oauth_claims_key``). Best-effort: the
+    chat pipeline that consumes this must treat the profile as optional."""
+    from onyx.redis.redis_pool import get_raw_redis_client
+
+    redis = get_raw_redis_client()
+    raw_map = redis.hgetall(_oauth_claims_key(get_current_tenant_id(), email))
+    if not isinstance(raw_map, dict) or not raw_map:
+        return []
+
+    sources: list[dict[str, Any]] = []
+    for snapshot in _sorted_snapshots(list(raw_map.values())):
+        sources.extend(_snapshot_sources(snapshot))
     return sources
 
 
@@ -415,8 +461,8 @@ def _resolve_profile(email: str) -> dict[str, tuple[str, str]]:
 
 
 def get_idp_profile_fields(email: str) -> dict[str, str]:
-    """Directory profile of the user (country, department, ...) from the last
-    captured login snapshot, as ordered ``{label: value}`` pairs for the auto
+    """Directory profile of the user (country, department, ...) from the
+    captured IdP login snapshots, as ordered ``{label: value}`` pairs for the auto
     "Organization Profile" prompt block. Best-effort: returns ``{}`` when the
     feature is disabled, nothing is captured, or Redis is unavailable —
     callers must treat the profile as optional."""
@@ -458,13 +504,14 @@ def get_idp_profile_placeholder_values(email: str) -> dict[str, str]:
 
 
 async def get_captured_oauth_claims(email: str) -> dict[str, Any] | None:
-    """Return the last captured claims snapshot for ``email``, or None."""
+    """Return the most recent captured claims snapshot for ``email``, or None."""
     redis = await get_async_redis_connection()
-    raw = await redis.get(_oauth_claims_key(get_current_tenant_id(), email))
-    if not raw:
+    # redis-py types hash commands as a sync-or-async union. This is the async client.
+    raw_map = await cast(
+        Awaitable[dict[Any, Any]],
+        redis.hgetall(_oauth_claims_key(get_current_tenant_id(), email)),
+    )
+    if not raw_map:
         return None
-    try:
-        data = json.loads(raw)
-        return data if isinstance(data, dict) else None
-    except json.JSONDecodeError:
-        return None
+    snapshots = _sorted_snapshots(list(raw_map.values()))
+    return snapshots[0] if snapshots else None

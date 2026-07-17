@@ -8,9 +8,11 @@ from pydantic import ValidationError
 
 from onyx.db.enums import EndpointPolicy
 from onyx.db.enums import ExternalAppType
+from onyx.db.enums import GatedAppKind
 from onyx.db.models import ExternalApp
 from onyx.external_apps.matching.engine import AllMatchedActions
 from onyx.external_apps.matching.engine import apply_credential_gate
+from onyx.external_apps.matching.engine import GatedTarget
 from onyx.external_apps.matching.engine import MatchedAction
 from onyx.external_apps.matching.engine import WHOLE_DOMAIN_ACTION_TYPE
 from onyx.external_apps.matching.request import ProxiedRequest
@@ -20,7 +22,10 @@ def test_rejects_empty_actions() -> None:
     """An AllMatchedActions with no actions is a programmer error — every gate
     consumer reads ``actions[0]``."""
     with pytest.raises(ValidationError, match="actions must be non-empty"):
-        AllMatchedActions(actions=(), app_name="X", external_app_id=1)
+        AllMatchedActions(
+            actions=(),
+            target=GatedTarget(kind=GatedAppKind.EXTERNAL_APP, id=1, app_name="X"),
+        )
 
 
 # ── apply_credential_gate: the pure credential/synthesize fork ─────────
@@ -44,8 +49,7 @@ def _matched_actions(*policies: EndpointPolicy) -> AllMatchedActions:
             )
             for i, p in enumerate(policies)
         ),
-        app_name="Slack",
-        external_app_id=1,
+        target=GatedTarget(kind=GatedAppKind.EXTERNAL_APP, id=1, app_name="Slack"),
     )
 
 

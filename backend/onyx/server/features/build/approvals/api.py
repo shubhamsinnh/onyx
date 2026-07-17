@@ -26,7 +26,9 @@ from onyx.cache.interface import CACHE_TRANSIENT_ERRORS
 from onyx.db.engine.sql_engine import get_session
 from onyx.db.enums import ApprovalDecidedVia
 from onyx.db.enums import ApprovalDecision
+from onyx.db.enums import GatedAppKind
 from onyx.db.enums import Permission
+from onyx.db.models import ActionApproval
 from onyx.db.models import User
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
@@ -86,6 +88,14 @@ class ApprovalView(BaseModel):
 
 class ApprovalListResponse(BaseModel):
     items: list[ApprovalView]
+
+
+def _row_target(row: ActionApproval) -> tuple[GatedAppKind, int] | None:
+    """The gated target ``(kind, id)`` a row is attributed to, or ``None`` when
+    its ``gated_app`` was cleared (parent app/server deleted — SET NULL)."""
+    if row.gated_app is None:
+        return None
+    return row.gated_app.kind, row.gated_app.target_id
 
 
 def _send_wake_best_effort(approval_id: UUID, decision: ApprovalDecision) -> None:
@@ -214,12 +224,13 @@ def submit_session_grant(
     if current is None:
         raise OnyxError(OnyxErrorCode.NOT_FOUND, "approval request not found")
     session_id = current.session_id
-    external_app_id = current.external_app_id
-    if external_app_id is None:
+    target = _row_target(current)
+    if target is None:
         raise OnyxError(
             OnyxErrorCode.INVALID_INPUT,
             "approval request cannot be granted for a session",
         )
+    target_kind, target_id = target
     if current.decision is not None:
         raise OnyxError(
             OnyxErrorCode.CONFLICT,
@@ -271,7 +282,8 @@ def submit_session_grant(
     grant_source_rows = action_approval.list_session_grant_action_approvals(
         db_session,
         session_id=session_id,
-        external_app_id=external_app_id,
+        kind=target_kind,
+        target_id=target_id,
     )
     granted_action_types: set[str] = set()
     for grant_source_row in grant_source_rows:
@@ -284,7 +296,8 @@ def submit_session_grant(
         for grant_source_row in grant_source_rows:
             approval_cache.cache_session_grant_actions(
                 session_id=session_id,
-                external_app_id=external_app_id,
+                kind=target_kind,
+                target_id=target_id,
                 action_types=actions_requiring_approval(grant_source_row.actions),
                 source_approval_id=grant_source_row.approval_id,
                 cache=cache,
@@ -303,7 +316,7 @@ def submit_session_grant(
     for row in pending_rows:
         if row.approval_id == approval_id:
             continue
-        if row.external_app_id != external_app_id:
+        if _row_target(row) != target:
             continue
         row_action_types = set(actions_requiring_approval(row.actions))
         covered = bool(row_action_types) and row_action_types.issubset(
@@ -329,11 +342,12 @@ def submit_session_grant(
 
     logger.info(
         "approval.session_grant_recorded approval_id=%s session_id=%s "
-        "user_id=%s external_app_id=%s action_types=%s approved_count=%s",
+        "user_id=%s target=%s:%s action_types=%s approved_count=%s",
         approval_id,
         session_id,
         user.id,
-        external_app_id,
+        target_kind.value,
+        target_id,
         grant_action_types,
         len(approved_ids),
     )

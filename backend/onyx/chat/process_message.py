@@ -105,7 +105,7 @@ from onyx.llm.interfaces import LLMUserIdentity
 from onyx.llm.override_models import LLMOverride
 from onyx.llm.request_context import reset_llm_mock_response
 from onyx.llm.request_context import set_llm_mock_response
-from onyx.llm.utils import collect_llm_credential_values
+from onyx.llm.utils import collect_credential_values
 from onyx.llm.utils import litellm_exception_to_safe_error
 from onyx.llm.utils import scrub_sensitive_values
 from onyx.onyxbot.slack.models import SlackContext
@@ -1419,7 +1419,9 @@ def _run_models(
                     stack_trace = "".join(
                         traceback.format_exception(type(item), item, item.__traceback__)
                     )
-                    secrets = collect_llm_credential_values(model_llm)
+                    secrets = collect_credential_values(
+                        model_llm.config.api_key, model_llm.config.custom_config
+                    )
                     error_msg = scrub_sensitive_values(error_msg, secrets)
                     stack_trace = scrub_sensitive_values(stack_trace, secrets)
                     _publish(
@@ -1695,7 +1697,8 @@ def _stream_chat_turn(
                 litellm_exception_to_safe_error(e, llm)
             )
             stack_trace = scrub_sensitive_values(
-                stack_trace, collect_llm_credential_values(llm)
+                stack_trace,
+                collect_credential_values(llm.config.api_key, llm.config.custom_config),
             )
             yield StreamingError(
                 error=client_error_msg,

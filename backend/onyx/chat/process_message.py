@@ -105,7 +105,9 @@ from onyx.llm.interfaces import LLMUserIdentity
 from onyx.llm.override_models import LLMOverride
 from onyx.llm.request_context import reset_llm_mock_response
 from onyx.llm.request_context import set_llm_mock_response
-from onyx.llm.utils import litellm_exception_to_error_msg
+from onyx.llm.utils import collect_llm_credential_values
+from onyx.llm.utils import litellm_exception_to_safe_error
+from onyx.llm.utils import scrub_sensitive_values
 from onyx.onyxbot.slack.models import SlackContext
 from onyx.prompts.prompt_utils import substitute_user_placeholders
 from onyx.server.query_and_chat.chat_utils import mime_type_to_chat_file_type
@@ -1298,15 +1300,9 @@ def _run_models(
 
         except Exception as e:
             model_errored[model_idx] = True
-            message, error_code, is_retryable = litellm_exception_to_error_msg(
+            message, error_code, is_retryable = litellm_exception_to_safe_error(
                 e, model_llm, fallback_to_error_msg=True
             )
-            # Redact here so both the streamed and persisted error are safe:
-            # the fallback path returns str(e) verbatim, which can embed the key.
-            if model_llm.config.api_key and len(model_llm.config.api_key) > 2:
-                message = message.replace(
-                    model_llm.config.api_key, "[REDACTED_API_KEY]"
-                )
             model_error_info[model_idx] = (message, error_code, is_retryable)
             merged_queue.put((model_idx, e))
 
@@ -1423,13 +1419,9 @@ def _run_models(
                     stack_trace = "".join(
                         traceback.format_exception(type(item), item, item.__traceback__)
                     )
-                    if model_llm.config.api_key and len(model_llm.config.api_key) > 2:
-                        error_msg = error_msg.replace(
-                            model_llm.config.api_key, "[REDACTED_API_KEY]"
-                        )
-                        stack_trace = stack_trace.replace(
-                            model_llm.config.api_key, "[REDACTED_API_KEY]"
-                        )
+                    secrets = collect_llm_credential_values(model_llm)
+                    error_msg = scrub_sensitive_values(error_msg, secrets)
+                    stack_trace = scrub_sensitive_values(stack_trace, secrets)
                     _publish(
                         StreamingError(
                             error=error_msg,
@@ -1699,16 +1691,12 @@ def _stream_chat_turn(
 
         llm = setup.llms[0] if setup else None
         if llm:
-            client_error_msg, error_code, is_retryable = litellm_exception_to_error_msg(
-                e, llm
+            client_error_msg, error_code, is_retryable = (
+                litellm_exception_to_safe_error(e, llm)
             )
-            if llm.config.api_key and len(llm.config.api_key) > 2:
-                client_error_msg = client_error_msg.replace(
-                    llm.config.api_key, "[REDACTED_API_KEY]"
-                )
-                stack_trace = stack_trace.replace(
-                    llm.config.api_key, "[REDACTED_API_KEY]"
-                )
+            stack_trace = scrub_sensitive_values(
+                stack_trace, collect_llm_credential_values(llm)
+            )
             yield StreamingError(
                 error=client_error_msg,
                 stack_trace=stack_trace,

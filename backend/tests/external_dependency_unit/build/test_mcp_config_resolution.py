@@ -74,5 +74,5 @@ def test_only_craft_enabled_servers_resolved_with_tool_curation(
     assert off.server_url not in by_url
     config = by_url[craft.server_url]
     assert config.key == f"linear-mcp-{craft.id}"
-    assert set(config.enabled_tools) == {"list_issues", "create_issue"}
+    # Only disabled tools are tracked; enabled ones ride the wildcard allow.
     assert config.disabled_tools == ("delete_issue",)

@@ -18,6 +18,7 @@ from onyx.cache.factory import get_cache_backend
 from onyx.db.enums import ApprovalDecidedVia
 from onyx.db.enums import ApprovalDecision
 from onyx.db.enums import EndpointPolicy
+from onyx.db.enums import GatedAppKind
 from onyx.db.models import BuildSession
 from onyx.error_handling.error_codes import OnyxErrorCode
 from onyx.error_handling.exceptions import OnyxError
@@ -356,7 +357,8 @@ def test_submit_session_grant_approves_matching_pending_rows(
         actions=[ask_send, always_read],
         app_name="Slack",
         payload={"text": "current"},
-        external_app_id=app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=app.id,
     )
     matching = insert_action_approval(
         db_session,
@@ -364,7 +366,8 @@ def test_submit_session_grant_approves_matching_pending_rows(
         actions=[ask_send],
         app_name="Slack",
         payload={"text": "matching"},
-        external_app_id=app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=app.id,
     )
     broader = insert_action_approval(
         db_session,
@@ -372,7 +375,8 @@ def test_submit_session_grant_approves_matching_pending_rows(
         actions=[ask_send, ask_upload],
         app_name="Slack",
         payload={"text": "broader"},
-        external_app_id=app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=app.id,
     )
     other = insert_action_approval(
         db_session,
@@ -380,7 +384,8 @@ def test_submit_session_grant_approves_matching_pending_rows(
         actions=[ask_send],
         app_name="Other",
         payload={"text": "other"},
-        external_app_id=other_app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=other_app.id,
     )
     db_session.commit()
 
@@ -420,13 +425,15 @@ def test_submit_session_grant_approves_matching_pending_rows(
     cache = get_cache_backend(tenant_id=POSTGRES_DEFAULT_SCHEMA_STANDARD_VALUE)
     assert approval_cache.cached_session_grants_cover(
         session_id=session.id,
-        external_app_id=app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=app.id,
         action_types=["slack.chat.post"],
         cache=cache,
     )
     assert not approval_cache.cached_session_grants_cover(
         session_id=session.id,
-        external_app_id=app.id,
+        kind=GatedAppKind.EXTERNAL_APP,
+        target_id=app.id,
         action_types=["slack.files.upload"],
         cache=cache,
     )

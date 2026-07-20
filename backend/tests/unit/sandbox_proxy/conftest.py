@@ -18,7 +18,9 @@ from uuid import uuid4
 from mitmproxy import http
 
 from onyx.db.enums import EndpointPolicy
+from onyx.db.enums import GatedAppKind
 from onyx.external_apps.matching.engine import AllMatchedActions
+from onyx.external_apps.matching.engine import GatedTarget
 from onyx.external_apps.matching.engine import MatchedAction
 from onyx.sandbox_proxy.addons.gate import _IdentityResolver
 from onyx.sandbox_proxy.credential_injection import CredentialResolver
@@ -219,7 +221,8 @@ def make_matched_actions(
                 policy=policy,
             ),
         ),
-        app_name=app_name,
-        external_app_id=external_app_id,
+        target=GatedTarget(
+            kind=GatedAppKind.EXTERNAL_APP, id=external_app_id, app_name=app_name
+        ),
         payload=payload if payload is not None else {},
     )

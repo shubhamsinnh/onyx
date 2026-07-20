@@ -78,3 +78,25 @@ def test_llm_env_injection_defaults_on_for_single_tenant() -> None:
         ).llm_custom_config_env_injection
         is True
     )
+
+def test_llm_env_injection_hard_off_on_multi_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The MULTI_TENANT clamp wins even if a stored setting says enabled."""
+    monkeypatch.setattr(store, "MULTI_TENANT", True)
+    assert store.llm_custom_config_env_injection_enabled() is False
+
+
+def test_llm_env_injection_follows_setting_on_single_tenant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(store, "MULTI_TENANT", False)
+    for enabled in (True, False):
+        monkeypatch.setattr(
+            store,
+            "get_security_settings",
+            lambda enabled=enabled: store._build_env_defaults().model_copy(
+                update={"llm_custom_config_env_injection": enabled}
+            ),
+        )
+        assert store.llm_custom_config_env_injection_enabled() is enabled
